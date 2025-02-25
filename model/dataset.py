@@ -19,23 +19,27 @@ def load_and_process_data(args, device, logging, dataset_name):
         logging.info('preprocessing dataset: {}'.format(dataset_name))
         # data: {pat_id: {x_1: [v1, v2,...], x_2: [v1, v2,...]}}
         try:
-            data = pickle.load(open(args.data_dir + dataset_name + '.pkl', 'rb'))
+            data = pickle.load(open(os.path.join(args.data_dir, dataset_name + '.pkl'), 'rb'))
         except FileNotFoundError:
             logging.info('Using synthetic data instead')
-            data = pickle.load(open(args.data_dir + 'synthetic_full.pkl', 'rb'))
+            data = pickle.load(open(os.path.join(args.data_dir, 'synthetic_full.pkl'), 'rb'))
             # Convert synthetic data format to expected format
             converted_data = {}
             for pid, datum in data.items():
                 converted_datum = {}
                 # Use temporal features as main features
-                for i in range(datum['x'].shape[0]):  # For each feature
-                    converted_datum[f'feature_{i}'] = datum['x'][i].tolist()
-                # Use static features as demographics
-                for i in range(len(demos)):
-                    if i < datum['x_static'].shape[0]:
-                        converted_datum[demos[i]] = datum['x_static'][i]
-                    else:
-                        converted_datum[demos[i]] = 0  # Default value
+                temporal_features = datum['x'].transpose()  # Convert to [timesteps, features]
+                for i in range(temporal_features.shape[1]):  # For each feature
+                    converted_datum[f'feature_{i}'] = temporal_features[:, i].tolist()
+                
+                # Extract static features (demographics) from x_static
+                x_static = datum['x_static']
+                # Map the static features to demographic fields
+                converted_datum['agegroup'] = float(x_static[0]) if x_static.shape[0] > 0 else 0.0
+                converted_datum['heightgroup'] = float(x_static[1]) if x_static.shape[0] > 1 else 0.0
+                converted_datum['weightgroup'] = float(x_static[2]) if x_static.shape[0] > 2 else 0.0
+                converted_datum['gender'] = float(x_static[3]) if x_static.shape[0] > 3 else 0.0
+                
                 # Use y[0] as outcome (factual outcome)
                 converted_datum['outcome'] = datum['y'][0].tolist()
                 # Use treatment sequence
@@ -46,7 +50,7 @@ def load_and_process_data(args, device, logging, dataset_name):
             data = converted_data
             
         try:
-            features = pickle.load(open(args.data_dir + 'header.pkl', 'rb'))
+            features = pickle.load(open(os.path.join(args.data_dir, 'header.pkl'), 'rb'))
         except FileNotFoundError:
             # If no header.pkl, use feature names we created
             features = [f'feature_{i}' for i in range(20)]  # 20 temporal features
@@ -58,23 +62,47 @@ def load_and_process_data(args, device, logging, dataset_name):
         for val in features:
             vals = []
             for datum in data.values():
-                if isinstance(datum[val], list):
-                    vals += datum[val]
-                else:
-                    vals.append(datum[val])
-            vals = np.array(vals)
-            output.write('{},{:.2f},{:.2f}\n'.format(val, np.mean(vals), np.std(vals)))
+                if val in datum:  # Check if feature exists in datum
+                    if isinstance(datum[val], list):
+                        vals += datum[val]
+                    else:
+                        vals.append(datum[val])
+            if vals:  # Only process if we have values
+                vals = np.array(vals)
+                output.write('{},{:.2f},{:.2f}\n'.format(val, np.mean(vals), np.std(vals)))
 
         for id, datum in data.items():
             x = []
-            for val in features:
-                x.append(datum[val])
-
-            y = np.array(datum['outcome'])
-            # x.append(y)
-            x = np.array(x).T
-
-            treatment = np.array(datum['treatment'])
+            if 'x' in datum:  # If this is synthetic data in original format
+                # Handle synthetic data format
+                temporal_features = datum['x'].transpose()  # Convert to [timesteps, features]
+                x = temporal_features
+                # Extract demographics from x_static
+                x_demo = []
+                x_static = datum['x_static']
+                for i in range(len(demos)):
+                    x_demo.append(float(x_static[i]) if i < x_static.shape[0] else 0.0)
+                x_demo = np.array(x_demo)
+                # Get outcome and treatment
+                y = np.array(datum['y'][0])
+                treatment = np.array(datum['a'])
+            else:
+                # Handle regular data format
+                for val in features:
+                    if val in datum:
+                        x.append(datum[val])
+                    else:
+                        logging.warning(f"Feature {val} not found in datum {id}")
+                        x.append(np.zeros_like(datum[features[0]]))  # Use same length as first feature
+                x = np.array(x).T
+                # Get demographics from converted format
+                x_demo = []
+                for demo in demos:
+                    x_demo.append(datum[demo])
+                x_demo = np.array(x_demo)
+                # Get outcome and treatment
+                y = np.array(datum['outcome'])
+                treatment = np.array(datum['treatment'])
 
             if len(treatment) < 9:
                 continue
@@ -85,17 +113,13 @@ def load_and_process_data(args, device, logging, dataset_name):
             treatment_pad = torch.tensor(treatment_pad.astype(np.float32)).unsqueeze(0)
             y_pad = torch.tensor(y_pad.astype(np.float32)).unsqueeze(0)
             mask = torch.tensor(mask.astype(np.float32)).unsqueeze(0)
+            x_demo = torch.tensor(x_demo.astype(np.float32)).unsqueeze(0)
 
             X.append(x_pad)
             Treatment.append(treatment_pad)
             Y.append(y_pad)
-            x_demo = []
-            for demo in demos:
-                x_demo.append(datum[demo])
-            x_demo = np.array(x_demo)
-            x_demo = torch.tensor(x_demo.astype(np.float32)).unsqueeze(0)
             X_demo.append(x_demo)
-            Death.append(torch.tensor(datum['death'], dtype=torch.float32).unsqueeze(0))
+            Death.append(torch.tensor(datum.get('death', 0), dtype=torch.float32).unsqueeze(0))
             Mask.append(mask)
             Treatment_label.append(torch.tensor(treatment_label).unsqueeze(0))
 

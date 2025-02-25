@@ -36,7 +36,7 @@ $outdir = "results_mimic/${date}"
 New-Item -ItemType Directory -Force -Path $outdir
 
 $ratio = 0.4
-101..150 | ForEach-Object {
+101..110 | ForEach-Object {
     $current_seed = $_
     
     $pretrained_model = "checkpoints/${date}/${time}_${TAU}_pretrain.pt"

@@ -9,6 +9,109 @@ The original project required:
 - PyTorch 1.4
 - MIMIC-III dataset or synthetic data
 
+## Training Process
+The training happens in two phases:
+1. **Pretraining Phase**: A single pretraining run with a fixed seed (default: 66)
+2. **Main Training Phase**: Multiple training runs with different seeds (default: seeds 101-110)
+
+Each training run:
+- Runs for 50 epochs (configurable)
+- Uses batch size of 32 (configurable)
+- Tests on both MIMIC-III and AmsterdamDB datasets (using synthetic data as stand-in)
+- Saves model checkpoints and logs
+
+## Detailed Pipeline Description
+
+### 1. Data Generation
+Before training starts:
+- Synthetic data is generated using `simulation/gen_synthetic.py`
+- Creates `data/synthetic_full.pkl` with simulated patient data
+- This replaces the need for real MIMIC-III/AmsterdamDB data
+
+### 2. Pretraining Phase
+First, the model goes through pretraining:
+- Uses fixed seed (66) for reproducibility
+- Runs for 50 epochs
+- Creates a pretrained model: `checkpoints/[DATE]/[TIME]_[TAU]_pretrain.pt`
+- Logs are saved to: `log/[DATE]/[TIME]_[TAU]_pretrain.log`
+- This pretrained model will be used as starting point for all subsequent training runs
+
+### 3. Main Training Phase
+For each seed (101 through 110):
+1. **Model Initialization**:
+   - Loads the pretrained model
+   - Initializes with the current seed
+   - Sets up new log files and checkpoint paths
+
+2. **Training**:
+   - Runs for 50 epochs
+   - Each epoch:
+     - Trains on synthetic data
+     - Validates performance
+     - Saves if best model so far
+   - Saves final model as: `checkpoints/[DATE]/[TIME]_[TAU]_0.4_[SEED].pt`
+   - Logs to: `log/[DATE]/[TIME]_[TAU]_0.4_[SEED].log`
+
+3. **Testing**:
+   - Tests on synthetic data (standing in for MIMIC-III)
+   - Tests on synthetic data (standing in for AmsterdamDB)
+   - Tests for both 30-day and 60-day mortality windows
+   - Reports:
+     - Difference rates
+     - Same rates
+     - Number of differences
+     - Total rates
+     - Number of patients
+
+4. **Results**:
+   - Saved in `results_mimic/[DATE]/[TIME]_[TAU]_0.4/`
+   - Includes performance metrics for both datasets
+
+### Output Directory Structure
+```
+project/
+├── checkpoints/[DATE]/          # Model checkpoints
+│   ├── [TIME]_[TAU]_pretrain.pt    # Pretrained model
+│   ├── [TIME]_[TAU]_0.4_101.pt     # Model for seed 101
+│   └── ...                          # Models for other seeds
+├── log/[DATE]/                  # Training logs
+│   ├── [TIME]_[TAU]_pretrain.log   # Pretraining logs
+│   ├── [TIME]_[TAU]_0.4_101.log    # Logs for seed 101
+│   └── ...                          # Logs for other seeds
+└── results_mimic/[DATE]/        # Final results
+    └── [TIME]_[TAU]_0.4/           # Results for all seeds
+```
+
+Where:
+- `[DATE]`: Current date (YYYY-MMDD)
+- `[TIME]`: Current time (HHMMSS)
+- `[TAU]`: Follow-up steps parameter (e.g., 3)
+- `0.4`: Fixed augmentation ratio
+- `101-110`: Different random seeds
+
+### Configuring Training Parameters
+All main training parameters can be found at the top of `run.ps1`:
+```powershell
+$epochs = 50              # Number of epochs per training run
+$batch_size = 32         # Batch size for training
+$lr = "5e-5"            # Learning rate
+$seed = 66              # Seed for pretraining phase
+```
+
+### Configuring Number of Seeds
+The number of different seeds to test is controlled by this line in `run.ps1`:
+```powershell
+101..110 | ForEach-Object {  # Tests seeds 101 through 110
+    $current_seed = $_
+    # ... training code ...
+}
+```
+To change the number of seeds:
+- Modify the range (e.g., `101..120` for 20 seeds)
+- The first number is the starting seed
+- The second number is the ending seed
+- Total runs = (ending seed - starting seed + 1)
+
 ## Changes Made
 
 ### 1. Script Conversion
