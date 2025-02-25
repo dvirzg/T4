@@ -18,8 +18,39 @@ def load_and_process_data(args, device, logging, dataset_name):
     else:
         logging.info('preprocessing dataset: {}'.format(dataset_name))
         # data: {pat_id: {x_1: [v1, v2,...], x_2: [v1, v2,...]}}
-        data = pickle.load(open(args.data_dir + dataset_name + '.pkl', 'rb'))
-        features = pickle.load(open(args.data_dir + 'header.pkl', 'rb'))
+        try:
+            data = pickle.load(open(args.data_dir + dataset_name + '.pkl', 'rb'))
+        except FileNotFoundError:
+            logging.info('Using synthetic data instead')
+            data = pickle.load(open(args.data_dir + 'synthetic_full.pkl', 'rb'))
+            # Convert synthetic data format to expected format
+            converted_data = {}
+            for pid, datum in data.items():
+                converted_datum = {}
+                # Use temporal features as main features
+                for i in range(datum['x'].shape[0]):  # For each feature
+                    converted_datum[f'feature_{i}'] = datum['x'][i].tolist()
+                # Use static features as demographics
+                for i in range(len(demos)):
+                    if i < datum['x_static'].shape[0]:
+                        converted_datum[demos[i]] = datum['x_static'][i]
+                    else:
+                        converted_datum[demos[i]] = 0  # Default value
+                # Use y[0] as outcome (factual outcome)
+                converted_datum['outcome'] = datum['y'][0].tolist()
+                # Use treatment sequence
+                converted_datum['treatment'] = datum['a'].tolist()
+                # Set death to 0 (not available in synthetic data)
+                converted_datum['death'] = 0
+                converted_data[pid] = converted_datum
+            data = converted_data
+            
+        try:
+            features = pickle.load(open(args.data_dir + 'header.pkl', 'rb'))
+        except FileNotFoundError:
+            # If no header.pkl, use feature names we created
+            features = [f'feature_{i}' for i in range(20)]  # 20 temporal features
+            
         X, X_demo, Treatment, Treatment_label, Y, Death, Mask = [], [], [], [], [], [], []
 
         os.makedirs('stat/', exist_ok=True)
@@ -27,7 +58,10 @@ def load_and_process_data(args, device, logging, dataset_name):
         for val in features:
             vals = []
             for datum in data.values():
-                vals += [v for v in datum[val]]
+                if isinstance(datum[val], list):
+                    vals += datum[val]
+                else:
+                    vals.append(datum[val])
             vals = np.array(vals)
             output.write('{},{:.2f},{:.2f}\n'.format(val, np.mean(vals), np.std(vals)))
 
