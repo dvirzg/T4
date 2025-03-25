@@ -103,6 +103,10 @@ def load_and_process_data(args, device, logging, dataset_name):
 
 
 def pad_and_truncate(id, x, y, treatment, max_stay, pre_window):
+    """
+    Modified to handle treatment as a 2D tensor with [dosage, timing] values
+    - treatment: shape [seq_len, 2] where the last dimension contains [dosage, timing]
+    """
     x_len = len(x)
     x_obs = x[:x_len-pre_window]
     t_len = len(treatment)
@@ -111,22 +115,44 @@ def pad_and_truncate(id, x, y, treatment, max_stay, pre_window):
         # ((top, bottom), (left, right)):
         x_pad = np.pad(x_obs, ((0, max_stay - len(x_obs)) ,(0, 0)), 'constant')
         y_pad = y[-pre_window-1:]
-        if max_stay - len(treatment_obs) < 0:
-            print()
-        treatment_pad = np.pad(treatment_obs, (0, max_stay - len(treatment_obs)), 'constant')
+        
+        # Handle 2D treatment (dosage and timing)
+        pad_size = max_stay - len(treatment_obs)
+        if pad_size > 0:
+            # Pad with zeros for both dosage and timing
+            padding = np.zeros((pad_size, 2))
+            treatment_pad = np.concatenate([treatment_obs, padding], axis=0)
+        else:
+            treatment_pad = treatment_obs
+            
+        # Get treatment prediction values
         treatment_pred = treatment[-pre_window:]
-        treatment_pad = np.concatenate((treatment_pad, treatment_pred))
+        treatment_pad = np.concatenate((treatment_pad, treatment_pred), axis=0)
 
         mask = np.zeros_like(x_pad)
         mask[:(x_len-pre_window)] = 1
     else:
         x_pad = x[:max_stay]
         y_pad = y[max_stay-1:max_stay+pre_window]
+        
+        # Truncate treatment
         treatment_pad = treatment[:max_stay]
         treatment_pred = treatment[max_stay:max_stay+pre_window]
-        treatment_pad = np.concatenate((treatment_pad, treatment_pred))
+        treatment_pad = np.concatenate((treatment_pad, treatment_pred), axis=0)
+        
         mask = np.ones_like(x_pad)
 
-    treatment_pre_str = ''.join(str(int(x)) for x in treatment_pred)
-    treatment_label = int(treatment_pre_str, 2)
+    # Create a treatment label for classification 
+    # We encode each dimension (dosage, timing) into discrete bins for classification
+    dosage_bins = np.digitize(treatment_pred[:, 0], bins=[0.25, 0.5, 0.75]) # 4 bins
+    timing_bins = np.digitize(treatment_pred[:, 1], bins=[0.25, 0.5, 0.75]) # 4 bins
+    
+    # Combine into a single label (can represent up to 16 different treatment combinations)
+    treatment_label = 0
+    for i, (d, t) in enumerate(zip(dosage_bins, timing_bins)):
+        # Each position in the sequence gets a different weight
+        position_weight = 4 ** (pre_window - i - 1)
+        combined_value = d * 4 + t
+        treatment_label += combined_value * position_weight
+    
     return x_pad, treatment_pad, treatment_label, y_pad, mask

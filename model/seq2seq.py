@@ -76,9 +76,9 @@ class Encoder(nn.Module):
 
         self.x_static_size = x_static_size
 
-        self.rnn = nn.LSTM(emb_dim+1, hid_dim, n_layers, batch_first=True)
+        self.rnn = nn.LSTM(emb_dim+2, hid_dim, n_layers, batch_first=True)  # Modified: +2 for dosage and timing
 
-        self.fc_out = nn.Linear(hid_dim+emb_dim+1, output_dim)
+        self.fc_out = nn.Linear(hid_dim+emb_dim+2, output_dim)  # Modified: +2 for dosage and timing
 
         self.dropout = nn.Dropout(dropout)
 
@@ -90,7 +90,7 @@ class Encoder(nn.Module):
         self.ps_out = torch.nn.Sequential(
             nn.Linear(hid_dim+emb_dim, hid_dim),
             torch.nn.ReLU(),
-            torch.nn.Linear(hid_dim, 1, bias=False)
+            torch.nn.Linear(hid_dim, 2, bias=False)  # Modified: output 2 values (dosage, timing)
         )
 
         self.device = device
@@ -110,17 +110,29 @@ class Encoder(nn.Module):
         return inputs_attention
 
     def forward(self, src, x_static, treatment):
-
+        """
+        treatment is now expected to be a tensor with shape [batch_size, seq_len, 2]
+        where the last dimension contains [dosage, timing] values
+        """
         embedded = self.embedding(src)
         embedded = self.dropout(embedded)
 
         embedded_static = self.embedding_static(x_static)
 
-        treatment_hist = treatment[:,:(src.shape[1] - 1)]
-        treatment_zero = (torch.zeros(treatment_hist.shape[0])).unsqueeze(1).to(self.device)
-        treatment_hist = torch.cat((treatment_zero, treatment_hist), dim=1)
-        treatment_hist = treatment_hist.unsqueeze(-1)
-        embedded = torch.cat((embedded, treatment_hist), dim=-1)
+        # Extract dosage and timing histories
+        treatment_hist_dosage = treatment[:, :(src.shape[1] - 1), 0]
+        treatment_hist_timing = treatment[:, :(src.shape[1] - 1), 1]
+        
+        # Create zero tensors for padding
+        treatment_zero_dosage = torch.zeros(treatment_hist_dosage.shape[0], 1).to(self.device)
+        treatment_zero_timing = torch.zeros(treatment_hist_timing.shape[0], 1).to(self.device)
+        
+        # Concatenate zeros at the beginning
+        treatment_hist_dosage = torch.cat((treatment_zero_dosage, treatment_hist_dosage), dim=1).unsqueeze(-1)
+        treatment_hist_timing = torch.cat((treatment_zero_timing, treatment_hist_timing), dim=1).unsqueeze(-1)
+        
+        # Concatenate both treatments with embedded input
+        embedded = torch.cat((embedded, treatment_hist_dosage, treatment_hist_timing), dim=-1)
 
         outputs, (h,c) = self.rnn(embedded)  # no cell state!
 
@@ -129,11 +141,13 @@ class Encoder(nn.Module):
 
         att_normalized = self.softmax_masked(att_enc, src_mask)
         hidden = torch.sum(outputs * att_normalized.unsqueeze(-1), dim=1)
-        treatment_cur = treatment[:, -1].unsqueeze(-1)
+        
+        # Get current treatment (both dosage and timing)
+        treatment_cur = treatment[:, -1]  # shape: [batch_size, 2]
 
         hidden_con = torch.cat((hidden, embedded_static), dim=-1)
 
-        ps_pred = self.ps_out(hidden_con).squeeze(-1)
+        ps_pred = self.ps_out(hidden_con)  # Now outputs 2 values: dosage and timing propensity
 
         return h, c, outputs, hidden, ps_pred, src_mask
 
@@ -154,14 +168,24 @@ class AttentionDecoder(nn.Module):
 
         self.attn_f = Attn('general', hid_dim)
 
-        self.rnn = nn.LSTM(emb_dim*2+1, hid_dim, n_layers, dropout=dropout, batch_first=True)
+        self.rnn = nn.LSTM(emb_dim*2+2, hid_dim, n_layers, dropout=dropout, batch_first=True)
 
-        self.fc_out_1 = torch.nn.Sequential(
+        self.fc_out_dose_high = torch.nn.Sequential(
             nn.Linear(hid_dim * 2, hid_dim),
             torch.nn.ReLU(),
             torch.nn.Linear(hid_dim, 1))
 
-        self.fc_out_0 = torch.nn.Sequential(
+        self.fc_out_dose_low = torch.nn.Sequential(
+            nn.Linear(hid_dim * 2, hid_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hid_dim, 1))
+            
+        self.fc_out_timing_early = torch.nn.Sequential(
+            nn.Linear(hid_dim * 2, hid_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hid_dim, 1))
+            
+        self.fc_out_timing_late = torch.nn.Sequential(
             nn.Linear(hid_dim * 2, hid_dim),
             torch.nn.ReLU(),
             torch.nn.Linear(hid_dim, 1))
@@ -169,30 +193,35 @@ class AttentionDecoder(nn.Module):
         self.ps_out = torch.nn.Sequential(
             nn.Linear(hid_dim * 2, hid_dim),
             torch.nn.ReLU(),
-            torch.nn.Linear(hid_dim, 1))
+            torch.nn.Linear(hid_dim, 2))
 
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, input, x_static, treatment_cur, treatment_next, hidden, cell, encoder_outputs, mask):
-
+        """
+        treatment_cur and treatment_next are now expected to be tuples with [dosage, timing] values
+        dosage: 0-1 continuous value representing insulin dose
+        timing: 0-1 continuous value where 0 means early, 1 means late
+        """
         input = input.unsqueeze(-1)
         embedded = self.embedding(input)
 
-        # print(x_static.shape)
         embedded_static = self.embedding_static(x_static)
 
         embedded = embedded.unsqueeze(0) if len(embedded.shape) != 2 else embedded
 
         embedded = torch.cat((embedded, embedded_static), dim=-1)
 
-
-        treatment_cur = treatment_cur.unsqueeze(-1)
-
-        emb_con = torch.cat((embedded, treatment_cur), dim=-1)
+        # Unpack the treatment values (dosage and timing)
+        treatment_cur_dosage = treatment_cur[:, 0].unsqueeze(-1)
+        treatment_cur_timing = treatment_cur[:, 1].unsqueeze(-1)
+        
+        # Concatenate both treatment dimensions
+        emb_con = torch.cat((embedded, treatment_cur_dosage, treatment_cur_timing), dim=-1)
 
         emb_con = self.dropout(emb_con)
 
-        output, (hidden,cell)= self.rnn(emb_con.unsqueeze(1), (hidden, cell))
+        output, (hidden,cell) = self.rnn(emb_con.unsqueeze(1), (hidden, cell))
 
         # attention layer
         attn_weights = self.attn_f.forward(output, encoder_outputs, mask)
@@ -200,11 +229,32 @@ class AttentionDecoder(nn.Module):
 
         output = torch.cat((output.squeeze(1), context), dim=-1)
 
-        ps_output = self.ps_out(output).squeeze(-1)
+        ps_output = self.ps_out(output)  # Now outputs two values: dosage and timing propensity
+        
+        # Extract treatment components
+        treatment_next_dosage = treatment_next[:, 0].unsqueeze(-1)
+        treatment_next_timing = treatment_next[:, 1].unsqueeze(-1)
 
-        treatment_next = treatment_next.unsqueeze(-1)
-        prediction = treatment_next * self.fc_out_1(output) + (1-treatment_next) * self.fc_out_0(output)
-        prediction_cf = treatment_next * self.fc_out_0(output) + (1 - treatment_next) * self.fc_out_1(output)
+        # Predict based on dosage (high vs low)
+        prediction_dosage = treatment_next_dosage * self.fc_out_dose_high(output) + \
+                          (1 - treatment_next_dosage) * self.fc_out_dose_low(output)
+                          
+        # Predict based on timing (early vs late)
+        prediction_timing = treatment_next_timing * self.fc_out_timing_late(output) + \
+                          (1 - treatment_next_timing) * self.fc_out_timing_early(output)
+        
+        # Calculate counterfactual predictions (dosage)
+        prediction_cf_dosage = treatment_next_dosage * self.fc_out_dose_low(output) + \
+                             (1 - treatment_next_dosage) * self.fc_out_dose_high(output)
+        
+        # Calculate counterfactual predictions (timing)
+        prediction_cf_timing = treatment_next_timing * self.fc_out_timing_early(output) + \
+                             (1 - treatment_next_timing) * self.fc_out_timing_late(output)
+        
+        # The final prediction combines both dosage and timing effects
+        # We assume both contribute equally to the final prediction for now
+        prediction = 0.5 * prediction_dosage + 0.5 * prediction_timing
+        prediction_cf = 0.5 * prediction_cf_dosage + 0.5 * prediction_cf_timing
 
         return (prediction, prediction_cf), (hidden, cell), output, ps_output, attn_weights
 
@@ -223,7 +273,10 @@ class Seq2Seq(nn.Module):
             "Encoder and decoder must have equal number of layers!"
 
     def forward(self, src, trg, x_static, treatment, teacher_forcing_ratio=0.5):
-
+        """
+        treatment is now expected to be a tensor with shape [batch_size, seq_len, 2]
+        where the last dimension contains [dosage, timing] values
+        """
         batch_size = trg.shape[0]
         src_len, trg_len = src.shape[1], trg.shape[1]-1
         trg_vocab_size = self.decoder.output_dim
@@ -232,46 +285,37 @@ class Seq2Seq(nn.Module):
         outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
         outputs_cf = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
         decoder_attentions = torch.zeros(batch_size, trg_len, src_len).to(self.device)
-        ps_outputs = torch.zeros(batch_size, trg_len+1).to(self.device)
+        ps_outputs = torch.zeros(batch_size, trg_len+1, 2).to(self.device)  # Modified: 2 values (dosage, timing)
 
         # last hidden state of the encoder is the context
-        hidden, cell, encoder_outputs, patient_representations,  ps_pred, src_mask = self.encoder(src, x_static, treatment[:, :src_len])
-        ps_outputs[:, 0] = ps_pred
+        hidden, cell, encoder_outputs, patient_representations, ps_pred, src_mask = self.encoder(src, x_static, treatment[:, :src_len])
+        ps_outputs[:, 0] = ps_pred  # Store both dosage and timing propensity scores
 
         input = trg[:, 0].squeeze(-1).float()
-        treatment_cur = treatment[torch.arange(len(treatment)), (torch.sum(src_mask, dim=-1) - 1)]
+        # Get treatment at the end of the input sequence
+        indices = torch.sum(src_mask, dim=-1) - 1
+        treatment_cur = treatment[torch.arange(len(treatment)), indices]
 
         for t in range(trg_len):
-            # insert input token embedding, previous hidden state and the context state
-            # receive output tensor (predictions) and new hidden state
+            # get the treatment for the next timestep
             treatment_next = treatment[:, src_len+t]
 
             (output, output_cf), (hidden, cell), patient_rep, ps_output, decoder_attention = self.decoder(input,
-                                                                                                          x_static,
-                                                                                                          treatment_cur,
-                                                                                                          treatment_next,
-                                                                                                          hidden, cell,
-                                                                                                          encoder_outputs,
-                                                                                                          src_mask)
+                                                                                                        x_static,
+                                                                                                        treatment_cur,
+                                                                                                        treatment_next,
+                                                                                                        hidden, cell,
+                                                                                                        encoder_outputs,
+                                                                                                        src_mask)
 
-            treatment_cur = treatment[:, src_len + t]
-            # place predictions in a tensor holding predictions for each token
-            outputs[:, t] = output
-            outputs_cf[:, t] = output_cf
-            # decoder_attentions[:, t] = decoder_attention
+            outputs[:, t] = output.squeeze(1)
+            outputs_cf[:, t] = output_cf.squeeze(1)
             decoder_attentions[:, t] = decoder_attention
             ps_outputs[:, t+1] = ps_output
 
-            # decide if we are going to use teacher forcing or not
             teacher_force = random.random() < teacher_forcing_ratio
 
-            # get the highest predicted token from our predictions
-            # top1 = output.argmax(1).float()
-            top1 = output.squeeze(-1)
+            input = trg[:, t+1].squeeze(-1).float() if teacher_force else output.squeeze(-1).detach()
+            treatment_cur = treatment_next
 
-            # if teacher forcing, use actual next token as next input
-            # if not, use predicted token
-            input = trg[:, t+1] if teacher_force else top1
-
-
-        return outputs.squeeze(-1), outputs_cf.squeeze(-1), patient_representations, ps_outputs, decoder_attentions
+        return outputs, outputs_cf, patient_representations, ps_outputs, decoder_attentions

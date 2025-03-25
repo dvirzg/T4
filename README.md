@@ -1,81 +1,109 @@
-# T4
+# T4 Glucose Counterfactual Model
 
-# Introduction
-Code for paper "Estimating Trustworthy Treatment Effects for Antibiotic Stewardship in Sepsis"
+This project modifies the original T4 model to handle non-binary counterfactuals for blood glucose prediction based on insulin dosage and timing. It enables "what-if" analysis to predict how blood glucose levels would evolve under different insulin dosage and timing scenarios.
 
- In this paper, we propose a novel method to estimate Trustworthy Treatment effects for Time-to-Treatment antibiotic stewardship in sepsis (T4). 
- 
- <img src="src/Figure1_v3.png">
+## Features
 
-We demonstrate that T4 can identify effective treatment timing with estimated trustworthy ITEs for antibiotic stewardship on two real-world datasets ([AmsterdamUMCdb](https://amsterdammedicaldatascience.nl/) and [MIMIC-III](https://mimic.physionet.org/)).
+- Predict blood glucose trajectories based on insulin dose and timing interventions
+- Support for continuous treatment values (not just binary on/off)
+- Analysis of how treatment modifications affect glucose levels for 3-5 hours
+- Visualization tools for counterfactual comparison
 
-# Requirement
-Ubuntu16.04, python 3.6
+## Setup
 
-Install [pytorch 1.4](https://pytorch.org/)
-
-# Data
-## Real-world data
-#### Studied variables
-The list of variables in MIMIC-III and AdmsterdamDB. There are 22 temporal covariates and 4 demographics andstatic variables. PT: Prothrombin Time; BUN: Blood Urea Nitrogen; WBC: White Blood Cells count.
-
-| Category 	|  	| MIMIC-III 	|  	| AmsterdamDB 	|  	|
-|---	|---	|---	|---	|---	|---	|
-|  	|  	| Mean 	| Std. 	| Mean 	| Std. 	|
-| Demographics 	| Age 	| 65.55 	| 16.44 	| 61.30 	| 17.90 	|
-|  	| Gender 	| 43\% Female 	| - 	| 42\% Female 	| - 	|
-|  	| Weight 	| 81.67 	| 25.50 	| 79.83 	| 13.61 	|
-|  	| Height 	| 169.30 	| 11.17 	| 175.15 	| 8.44 	|
-| Lab test 	| Anion gap 	| 13.35 	| 3.80 	| 8.70 	| 4.62 	|
-|  	| Bicarbonate 	| 25.65 	| 5.27 	| 25.63 	| 6.35 	|
-|  	| Bilirubin 	| 3.36 	| 6.41 	| 3.15 	| 6.85 	|
-|  	| Creatinine 	| 1.50 	| 1.46 	| 1.28 	| 1.03 	|
-|  	| Chloride 	| 104.00 	| 6.60 	| 108.60 	| 46.31 	|
-|  	| Glucose 	| 134.00 	| 66.83 	| 133.9 	| 45.74 	|
-|  	| Hematocrit 	| 29.96 	| 5.13 	| 38.98 	| 1.67 	|
-|  	| Hemoglobin 	| 10.09 	| 1.79 	| 12.57 	| 1.64 	|
-|  	| Lactate 	| 2.44 	| 2.14 	| 2.40 	| 2.95 	|
-|  	| Platelet 	| 235.05 	| 155.28 	| 220.82 	| 171.65 	|
-|  	| Potassium 	| 4.08 	| 0.63 	| 5.58 	| 602.56 	|
-|  	| PT 	| 17.76 	| 8.95 	| 1.59 	| 10.12 	|
-|  	| Sodium 	| 138.84 	| 5.32 	| 140.88 	| 43.45 	|
-|  	| BUN 	| 29.85 	| 23.54 	| 14.15 	| 9.80 	|
-|  	| WBC 	| 11.23 	| 7.64 	| 14.56 	| 11.80 	|
-| Vital signs 	| Heart Rate 	| 87.81 	| 18.30 	| 92.70 	| 23.65 	|
-|  	| SysBP 	| 120.92 	| 23.28 	| 126.05 	| 139.59 	|
-|  	| DiasBP 	| 61.41 	| 14.55 	| 60.77 	| 31.11 	|
-|  	| Meanbp 	| 78.70 	| 16.88 	| 82.12 	| 47.34 	|
-|  	| Respratory 	| 20.48 	| 5.90 	| 21.99 	| 7.71 	|
-|  	| Temperature 	| 36.96 	| 0.85 	| 36.73 	| 21.14 	|
-|  	| SpO2 	| 97.00 	| 3.27 	| 96.09 	| 7.43 	|
-
-#### Studied antibiotics
-The list of antibiotics in MIMIC-III Dataset. There are 18 kinds of antibiotics in total.
-| Category 	| Name 	|
-|---	|---	|
-| Antibiotic 	| Cefazolin, Cefepime, Ceftazidime, Ciprofloxacin, Clindamycin,  Erythromycin, Gentamicin, Levofloxacin, Metronidazole, Moxifloxacin, Piperacillin, Rifampin, Tobramycin, Vancomycin,  Amikacin, Ampicillin, Azithromycin, Aztreonam 	|
-
-## Synthetic data
-#### Fully synthetic data
-```
-mkdir -p data
-python simulation/gen_synthetic.py
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/t4-glucose.git
+cd t4-glucose
 ```
 
-#### Semi-synthetic data based on MIMIC-III
-```
-# put preprocessed MIMIC-III data into folder "data/"
-python simulation/gen_synthetic_mimic.py
-```
-
-# Train T4
-#### Running example 
-```
-bash run.sh 3 # number of follow-up steps
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
 ```
 
-# Results
-Mortality rate comparison of two datasets. The results show that the mortality rate of patients who receive the antibiotics at the time werecommend is significantly lower than the patients who donot, indicating that our model offers effective timings of antibiotic administration that help to reduce the mortality rate.
+## Training the Model
 
-<img src="src/MIMIC-III_30d.png" width=40%><img src="src/MIMIC-III_60d.png" width=40%>
-<img src="src/AmsterdamUMCdb_30d.png" width=40%><img src="src/AmsterdamUMCdb_60d.png" width=40%>
+To train the model on synthetic glucose data:
+
+```bash
+python train_glucose_model.py --days 60 --epochs 50 --batch_size 64 --device cuda
+```
+
+This will:
+1. Generate 60 days of synthetic glucose data
+2. Train the T4 model for 50 epochs
+3. Save the best model to `checkpoints/glucose_model_epochs50_seed42.pt`
+
+Options:
+- `--days`: Number of days of synthetic data to generate (default: 60)
+- `--epochs`: Number of training epochs (default: 50)
+- `--batch_size`: Batch size for training (default: 64)
+- `--lr`: Learning rate (default: 0.001)
+- `--seed`: Random seed for reproducibility (default: 42)
+- `--device`: Device to run model on (default: cuda if available, otherwise cpu)
+
+## Evaluating Counterfactuals
+
+To evaluate the trained model with counterfactual scenarios:
+
+```bash
+python evaluate_counterfactuals.py --checkpoint checkpoints/glucose_model_epochs50_seed42.pt --mode both --scenarios 10
+```
+
+This will:
+1. Generate counterfactual scenarios for both insulin dosage and timing modifications
+2. Evaluate the model's predictions for each scenario
+3. Create visualizations of the counterfactual predictions
+4. Save the results to `counterfactual_results/`
+
+Options:
+- `--checkpoint`: Path to the trained model checkpoint (required)
+- `--mode`: Type of counterfactuals to evaluate: 'dose', 'timing', or 'both' (default: both)
+- `--scenarios`: Number of scenarios to evaluate (default: 10)
+- `--seed`: Random seed for reproducibility (default: 42)
+- `--device`: Device to run model on (default: cuda if available, otherwise cpu)
+
+## Visualization Examples
+
+After evaluation, you'll find visualizations for each counterfactual scenario in the `counterfactual_results` directory:
+
+- `dose/`: Insulin dose counterfactuals with variations of 0.5x to 1.5x the original dose
+- `timing/`: Insulin timing counterfactuals with variations from 30 minutes earlier to 30 minutes later
+- Summary plots showing the average effect across all scenarios
+
+## Model Architecture
+
+The model is based on the T4 architecture with these modifications:
+
+1. **Treatment representation**: Two-dimensional with dosage and timing values
+2. **Encoder**: Modified to handle 2D treatments and output dual propensity scores
+3. **Decoder**: Specialized output branches for dosage and timing effects
+
+See `docs/GLUCOSE_COUNTERFACTUALS.md` for a detailed explanation of the modifications.
+
+## Data
+
+The model uses synthetic glucose data generated by `simulation/simple_glucose_gen.py` with:
+- Blood glucose levels (mg/dL)
+- Insulin doses and timing relative to meals
+- Carbohydrate intake
+- Exercise and stress factors
+
+Real-world applications would replace this with actual continuous glucose monitoring (CGM) data.
+
+## Examples
+
+For a quick demonstration of the model's capabilities:
+
+```bash
+# Train a simple model with a smaller dataset for faster results
+python train_glucose_model.py --days 10 --epochs 10 --batch_size 32
+
+# Run a basic evaluation
+python evaluate_counterfactuals.py --checkpoint checkpoints/glucose_model_epochs10_seed42.pt --mode both --scenarios 3
+
+# View the results
+open counterfactual_results/dose/scenario_1_combined.png
+open counterfactual_results/timing/scenario_1_combined.png
+``` 
