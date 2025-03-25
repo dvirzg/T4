@@ -4,8 +4,8 @@ This project modifies the original T4 model to handle non-binary counterfactuals
 
 ## Features
 
-- Predict blood glucose trajectories based on insulin dose and timing interventions
-- Support for continuous treatment values (not just binary on/off)
+- Predict coutnerfactual blood glucose trajectories based on insulin dose and timing interventions
+- Support for continuous treatment values of insulin dosage (rather than just binary on/off) and timing before meal
 - Analysis of how treatment modifications affect glucose levels for 3-5 hours
 - Visualization tools for counterfactual comparison
 

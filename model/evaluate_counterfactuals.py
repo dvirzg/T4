@@ -41,7 +41,7 @@ def load_model(checkpoint_path, device='cpu'):
         raise FileNotFoundError(f"Model checkpoint not found at {checkpoint_path}")
     
     logger.info(f"Loading model from {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model_args = checkpoint['args']
     
     # Initialize model components
@@ -72,13 +72,16 @@ def load_model(checkpoint_path, device='cpu'):
     logger.info(f"Model loaded successfully (trained for {checkpoint['epoch']+1} epochs)")
     return model
 
-def evaluate_dose_counterfactuals(model, device='cuda', seed=42, n_scenarios=10):
+def evaluate_dose_counterfactuals(model, test_data, n_scenarios=5, device='cpu'):
     """Evaluate model on dose-based counterfactual scenarios"""
     logger.info("Generating dose-based counterfactual scenarios")
     
+    # Convert n_scenarios to int if it's a string
+    if isinstance(n_scenarios, str):
+        n_scenarios = int(n_scenarios)
+    
     # Generate test scenarios
-    generator = CounterfactualScenarioGenerator(seed=seed)
-    base_data = generator.generate_base_data(days=7)
+    generator = CounterfactualScenarioGenerator(seed=42)
     
     # Create output directory
     output_dir = "counterfactuals/results/dose"
@@ -86,7 +89,7 @@ def evaluate_dose_counterfactuals(model, device='cuda', seed=42, n_scenarios=10)
     
     # Sample intervention windows
     windows = generator.sample_intervention_windows(
-        base_data, 
+        test_data, 
         n_samples=n_scenarios, 
         hours_before=2,
         hours_after=5
@@ -102,7 +105,7 @@ def evaluate_dose_counterfactuals(model, device='cuda', seed=42, n_scenarios=10)
         logger.info(f"Processing scenario {i+1}/{len(windows)} at {intervention_time}")
         
         # Extract window data
-        window_data = base_data.loc[start_time:end_time].copy()
+        window_data = test_data.loc[start_time:end_time].copy()
         
         # Original insulin dose at intervention
         original_dose = window_data.loc[intervention_time, 'insulin']
@@ -151,13 +154,16 @@ def evaluate_dose_counterfactuals(model, device='cuda', seed=42, n_scenarios=10)
     logger.info(f"Dose counterfactual evaluation completed. Results saved to {output_dir}")
     return results
 
-def evaluate_timing_counterfactuals(model, device='cuda', seed=42, n_scenarios=10):
+def evaluate_timing_counterfactuals(model, test_data, n_scenarios=5, device='cpu'):
     """Evaluate model on timing-based counterfactual scenarios"""
     logger.info("Generating timing-based counterfactual scenarios")
     
+    # Convert n_scenarios to int if it's a string
+    if isinstance(n_scenarios, str):
+        n_scenarios = int(n_scenarios)
+    
     # Generate test scenarios
-    generator = CounterfactualScenarioGenerator(seed=seed)
-    base_data = generator.generate_base_data(days=7)
+    generator = CounterfactualScenarioGenerator(seed=42)
     
     # Create output directory
     output_dir = "counterfactuals/results/timing"
@@ -165,7 +171,7 @@ def evaluate_timing_counterfactuals(model, device='cuda', seed=42, n_scenarios=1
     
     # Sample intervention windows
     windows = generator.sample_intervention_windows(
-        base_data, 
+        test_data, 
         n_samples=n_scenarios, 
         hours_before=2,
         hours_after=5
@@ -181,7 +187,7 @@ def evaluate_timing_counterfactuals(model, device='cuda', seed=42, n_scenarios=1
         logger.info(f"Processing scenario {i+1}/{len(windows)} at {intervention_time}")
         
         # Extract window data
-        window_data = base_data.loc[start_time:end_time].copy()
+        window_data = test_data.loc[start_time:end_time].copy()
         
         # Original insulin dose at intervention
         original_dose = window_data.loc[intervention_time, 'insulin']

@@ -658,12 +658,20 @@ def generate_glucose_counterfactuals(model, data_window, intervention_time,
     # Create dummy outputs for model input
     dummy_y = np.zeros((pre_window + 1))
     
+    # We need to extend the treatment tensor to match the expected shape
+    # It should have length (max_stay + pre_window) to include future treatments
+    extended_treatment = np.zeros((max_stay + pre_window, 2))
+    extended_treatment[:treatment_pad.shape[0]] = treatment_pad
+    
+    extended_cf_treatment = np.zeros((max_stay + pre_window, 2))
+    extended_cf_treatment[:cf_treatment_pad.shape[0]] = cf_treatment_pad
+    
     # Convert to tensors
     x_tensor = torch.tensor(x_pad, dtype=torch.float32).unsqueeze(0).to(device)
     x_demo_tensor = torch.tensor(x_demo, dtype=torch.float32).unsqueeze(0).to(device)
-    treatment_tensor = torch.tensor(treatment_pad, dtype=torch.float32).unsqueeze(0).to(device)
-    cf_treatment_tensor = torch.tensor(cf_treatment_pad, dtype=torch.float32).unsqueeze(0).to(device)
-    y_tensor = torch.tensor(dummy_y, dtype=torch.float32).unsqueeze(0).to(device)
+    treatment_tensor = torch.tensor(extended_treatment, dtype=torch.float32).unsqueeze(0).to(device)
+    cf_treatment_tensor = torch.tensor(extended_cf_treatment, dtype=torch.float32).unsqueeze(0).to(device)
+    y_tensor = torch.tensor(dummy_y, dtype=torch.float32).unsqueeze(0).unsqueeze(-1).to(device)
     mask_tensor = torch.tensor(mask, dtype=torch.float32).unsqueeze(0).to(device)
     
     # Run model for factual prediction
@@ -675,8 +683,8 @@ def generate_glucose_counterfactuals(model, data_window, intervention_time,
         _, counterfactual_output, _, _, _ = model(x_tensor, y_tensor, x_demo_tensor, cf_treatment_tensor)
     
     # Convert predictions back to numpy and reshape
-    factual_pred = factual_output.cpu().numpy()[0]
-    counterfactual_pred = counterfactual_output.cpu().numpy()[0]
+    factual_pred = factual_output.cpu().numpy()[0].squeeze()
+    counterfactual_pred = counterfactual_output.cpu().numpy()[0].squeeze()
     
     # The full original and counterfactual trajectories
     factual_trajectory = np.concatenate([x[:, 0], factual_pred])

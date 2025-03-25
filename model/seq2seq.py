@@ -303,8 +303,9 @@ class Seq2Seq(nn.Module):
             (output, output_cf), (hidden, cell), _, ps_output, decoder_attention = self.decoder(
                 input, x_static, treatment_cur, treatment_next, hidden, cell, encoder_outputs, src_mask)
 
-            outputs[:, t] = output.squeeze(-1)
-            outputs_cf[:, t] = output_cf.squeeze(-1)
+            # Store the outputs without additional squeezing
+            outputs[:, t] = output
+            outputs_cf[:, t] = output_cf
             decoder_attentions[:, t] = decoder_attention
             ps_outputs[:, t+1] = ps_output
 
