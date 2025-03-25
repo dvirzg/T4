@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 import matplotlib.pyplot as plt
+import seaborn as sns
 from datetime import datetime, timedelta
 import logging
 from tqdm import tqdm
@@ -20,19 +21,21 @@ from counterfactuals.counterfactual_testing import (
     plot_glucose_counterfactuals,
     save_test_scenarios
 )
+from simulation.simple_glucose_gen import EnhancedGlucoseGenerator
+from counterfactuals.counterfactual_testing import convert_glucose_data_to_t4_format
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("evaluate_counterfactuals.log"),
+        logging.FileHandler("misc/logs/evaluate_counterfactuals.log"),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger("evaluate_counterfactuals")
 
-def load_model(checkpoint_path, device='cuda'):
+def load_model(checkpoint_path, device='cpu'):
     """Load a trained T4 model"""
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Model checkpoint not found at {checkpoint_path}")
@@ -129,8 +132,7 @@ def evaluate_dose_counterfactuals(model, device='cuda', seed=42, n_scenarios=10)
             
             # Create visualization for this counterfactual
             fig = plot_glucose_counterfactuals(window_data, cf_result)
-            plt.savefig(f"{output_dir}/scenario_{i+1}_dose_{multiplier:.2f}.png")
-            plt.close()
+            save_plot(fig, 'dose', i+1, f"{multiplier:.2f}")
         
         # Create combined visualization showing all dose multipliers
         create_combined_dose_plot(window_data, intervention_time, scenario_results, dose_multipliers, 
@@ -209,8 +211,7 @@ def evaluate_timing_counterfactuals(model, device='cuda', seed=42, n_scenarios=1
             
             # Create visualization for this counterfactual
             fig = plot_glucose_counterfactuals(window_data, cf_result)
-            plt.savefig(f"{output_dir}/scenario_{i+1}_timing_{shift:+d}.png")
-            plt.close()
+            save_plot(fig, 'timing', i+1, f"{shift:+d}")
         
         # Create combined visualization showing all timing shifts
         create_combined_timing_plot(window_data, intervention_time, scenario_results, timing_shifts, 
@@ -392,6 +393,18 @@ def create_timing_summary(results, output_file):
     plt.tight_layout()
     plt.savefig(output_file)
     plt.close()
+
+def save_plot(fig, mode, scenario_num, plot_type):
+    """Save plot to the appropriate directory"""
+    # Create directory if it doesn't exist
+    save_dir = f"counterfactuals/results/{mode}"
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Save the plot
+    save_path = f"{save_dir}/scenario_{scenario_num}_{plot_type}.png"
+    fig.savefig(save_path, bbox_inches='tight', dpi=300)
+    plt.close(fig)
+    logger.info(f"Saved plot to {save_path}")
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate T4 model with counterfactuals')

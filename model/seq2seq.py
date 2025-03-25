@@ -300,16 +300,11 @@ class Seq2Seq(nn.Module):
             # get the treatment for the next timestep
             treatment_next = treatment[:, src_len+t]
 
-            (output, output_cf), (hidden, cell), patient_rep, ps_output, decoder_attention = self.decoder(input,
-                                                                                                        x_static,
-                                                                                                        treatment_cur,
-                                                                                                        treatment_next,
-                                                                                                        hidden, cell,
-                                                                                                        encoder_outputs,
-                                                                                                        src_mask)
+            (output, output_cf), (hidden, cell), _, ps_output, decoder_attention = self.decoder(
+                input, x_static, treatment_cur, treatment_next, hidden, cell, encoder_outputs, src_mask)
 
-            outputs[:, t] = output.squeeze(1)
-            outputs_cf[:, t] = output_cf.squeeze(1)
+            outputs[:, t] = output.squeeze(-1)
+            outputs_cf[:, t] = output_cf.squeeze(-1)
             decoder_attentions[:, t] = decoder_attention
             ps_outputs[:, t+1] = ps_output
 

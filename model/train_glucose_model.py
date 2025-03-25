@@ -25,7 +25,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("train_glucose.log"),
+        logging.FileHandler("misc/logs/train_glucose.log"),
         logging.StreamHandler()
     ]
 )
