@@ -74,7 +74,7 @@ results/
 outputs/
 logs/
 *.log
-counterfactual_results/
+counterfactuals/results/
 
 # OS-specific files
 .DS_Store

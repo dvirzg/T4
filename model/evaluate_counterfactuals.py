@@ -81,7 +81,7 @@ def evaluate_dose_counterfactuals(model, device='cuda', seed=42, n_scenarios=10)
     base_data = generator.generate_base_data(days=7)
     
     # Create output directory
-    output_dir = "counterfactual_results/dose"
+    output_dir = "counterfactuals/results/dose"
     os.makedirs(output_dir, exist_ok=True)
     
     # Sample intervention windows
@@ -160,7 +160,7 @@ def evaluate_timing_counterfactuals(model, device='cuda', seed=42, n_scenarios=1
     base_data = generator.generate_base_data(days=7)
     
     # Create output directory
-    output_dir = "counterfactual_results/timing"
+    output_dir = "counterfactuals/results/timing"
     os.makedirs(output_dir, exist_ok=True)
     
     # Sample intervention windows
@@ -409,39 +409,30 @@ def save_plot(fig, mode, scenario_num, plot_type):
 def main():
     parser = argparse.ArgumentParser(description='Evaluate T4 model with counterfactuals')
     parser.add_argument('--checkpoint', type=str, required=True, help='Path to model checkpoint')
-    parser.add_argument('--mode', type=str, default='both', choices=['dose', 'timing', 'both'], 
-                        help='Type of counterfactuals to evaluate')
-    parser.add_argument('--scenarios', type=int, default=10, help='Number of scenarios to evaluate')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    parser.add_argument('--mode', type=str, choices=['dose', 'timing', 'both'], default='both',
+                       help='Type of counterfactuals to evaluate')
+    parser.add_argument('--scenarios', type=int, default=5, help='Number of scenarios to evaluate')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
                        help='Device to run model on')
     
     args = parser.parse_args()
     
-    # Create results directory
-    os.makedirs("counterfactual_results", exist_ok=True)
+    # Create output directory
+    os.makedirs("counterfactuals/results", exist_ok=True)
     
     # Load model
     model = load_model(args.checkpoint, device=args.device)
     
-    # Run evaluations
-    if args.mode in ['dose', 'both']:
-        evaluate_dose_counterfactuals(
-            model=model,
-            device=args.device,
-            seed=args.seed,
-            n_scenarios=args.scenarios
-        )
-        
-    if args.mode in ['timing', 'both']:
-        evaluate_timing_counterfactuals(
-            model=model,
-            device=args.device,
-            seed=args.seed,
-            n_scenarios=args.scenarios
-        )
+    # Generate test data
+    generator = EnhancedGlucoseGenerator(seed=42)
+    test_data = generator.generate_data(days=1)  # Generate 1 day of test data
     
-    logger.info("Counterfactual evaluation completed")
+    # Evaluate counterfactuals
+    if args.mode in ['dose', 'both']:
+        evaluate_dose_counterfactuals(model, test_data, args.scenarios, args.device)
+    
+    if args.mode in ['timing', 'both']:
+        evaluate_timing_counterfactuals(model, test_data, args.scenarios, args.device)
 
 if __name__ == "__main__":
     main() 

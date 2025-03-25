@@ -55,7 +55,7 @@ This will:
 1. Generate counterfactual scenarios for both insulin dosage and timing modifications
 2. Evaluate the model's predictions for each scenario
 3. Create visualizations of the counterfactual predictions
-4. Save the results to `counterfactual_results/`
+4. Save the results to `counterfactuals/results/`
 
 Options:
 - `--checkpoint`: Path to the trained model checkpoint (required)
@@ -66,7 +66,7 @@ Options:
 
 ## Visualization Examples
 
-After evaluation, you'll find visualizations for each counterfactual scenario in the `counterfactual_results` directory:
+After evaluation, you'll find visualizations for each counterfactual scenario in the `counterfactuals/results` directory:
 
 - `dose/`: Insulin dose counterfactuals with variations of 0.5x to 1.5x the original dose
 - `timing/`: Insulin timing counterfactuals with variations from 30 minutes earlier to 30 minutes later
@@ -104,6 +104,6 @@ python train_glucose_model.py --days 10 --epochs 10 --batch_size 32
 python evaluate_counterfactuals.py --checkpoint checkpoints/glucose_model_epochs10_seed42.pt --mode both --scenarios 3
 
 # View the results
-open counterfactual_results/dose/scenario_1_combined.png
-open counterfactual_results/timing/scenario_1_combined.png
+open counterfactuals/results/dose/scenario_1_combined.png
+open counterfactuals/results/timing/scenario_1_combined.png
 ``` 
